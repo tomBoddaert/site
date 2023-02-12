@@ -5,7 +5,20 @@ A simple static site builder
 [Example site](https://gist.github.com/tomBoddaert/eeb098d80db8f16accb2efda6b68182a)  
 This is the recommended place to start if you just want to get going.
 
+## Install
+
+If you have [`go`](https://go.dev/) installed:
+```sh
+go install github.com/tomboddaert/site@latest
+```
+
+There are prebuilt binaries on the releases page.
+
+[Building from source](#building-the-tool)
+
 ## Use
+
+The basic commands are [here](#using-the-tool).
 
 The file structure should look like this:
 ```
@@ -80,7 +93,7 @@ go build
 
 ## Using the tool
 
-(If the `site` binary is in the same directory rather than in PATH, change `site` => `./site` in the commands below)
+(If the `site` binary is in the same directory rather than in installed globally, change `site` => `./site` in the commands below)
 
 Help:
 ```sh
