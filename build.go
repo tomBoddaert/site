@@ -92,7 +92,7 @@ func copyRawPages(subDir string) {
 
 func copyTemplatedPages() {
 	// Get page variables
-	pageVariables := map[string]map[string]string{}
+	pageVariables := map[string]map[string]any{}
 	pageVariablesFile, err := os.ReadFile("pageVariables.json")
 	if !(err == nil || errors.Is(err, os.ErrNotExist)) {
 		check(err)
@@ -154,7 +154,7 @@ func copyTemplatedPages() {
 	}
 }
 
-func copyTemplatedDir(templateName string, subDir string, tmpl *template.Template, pageVariables map[string]map[string]string) {
+func copyTemplatedDir(templateName string, subDir string, tmpl *template.Template, pageVariables map[string]map[string]any) {
 	// Read templated pages
 	templatedPages, err := os.ReadDir(path.Join("templatedPages", templateName, subDir))
 	if err != nil && errors.Is(err, os.ErrNotExist) {
@@ -191,13 +191,23 @@ func copyTemplatedDir(templateName string, subDir string, tmpl *template.Templat
 		pageTmpl, err = pageTmpl.New("Content").Parse(string(contentFile))
 		check(err)
 
-		// Get title of page
-		data := pageVariables[path.Join(templateName, subDir, templatedPage.Name())]
-		if len(data) == 0 {
-			data = pageVariables[templateName]
+		// Get the page variables
+		data := map[string]any{}
+		if len(pageVariables["default"]) != 0 {
+			for key, value := range pageVariables["default"] {
+				data[key] = value
+			}
 		}
-		if len(data) == 0 {
-			data = pageVariables["default"]
+		if len(pageVariables[templateName]) != 0 {
+			for key, value := range pageVariables[templateName] {
+				data[key] = value
+			}
+		}
+		templatePath := path.Join(templateName, subDir, templatedPage.Name())
+		if len(pageVariables[templatePath]) != 0 {
+			for key, value := range pageVariables[templatePath] {
+				data[key] = value
+			}
 		}
 
 		pageBuffer := bytes.NewBuffer(nil)

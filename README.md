@@ -64,8 +64,8 @@ This is the directory for files that do not need templating. The files should be
 ### `pageVariables.json`
 
 This file is for variables used in the templates. The root should be an object, where the keys are the paths of the page in [`templatedPages`](#templatedpages), and the values are the data to be used in the page.  
-There can also be a `default` key, whose corresponding value is used in any page that is not in the file.  
-Defaults for a template can be set with a key corresponding to the name of the template.
+There can also be a `default` key, whose corresponding values are used when not overridden.  
+Defaults for a template can be set with a key corresponding to the name of the template, these take priority over the standard `default`.
 
 ### `tsconfig.json`
 
