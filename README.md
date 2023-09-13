@@ -46,7 +46,7 @@ The file structure should look like this:
 ### `siteConfig.json`
 
 This file sets the config for site. The default config (do not use comments):
-```json
+```js
 {
   "TemplateDir":      "templates", // Sets the template directory
   "TemplatedSrcDir":  "pages",     // Sets the templated page directory
