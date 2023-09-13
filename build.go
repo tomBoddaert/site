@@ -2,260 +2,142 @@ package main
 
 import (
 	"bytes"
-	"encoding/json"
 	"errors"
-	"fmt"
 	"io/fs"
 	"os"
-	"os/exec"
 	"path"
-	"strings"
 	"text/template"
 
 	"github.com/yosssi/gohtml"
 )
 
-var includeTSFiles = false
-var formatHTMLFiles = false
-
-var tempDir string
-
-func build() {
-	// Create the temp directory
-	var err error
-	// The os temp directory is not used because some OSs
-	//  don't support moving files between volumes / devices
-	// tempDir, err = os.MkdirTemp(os.TempDir(), "site-docs")
-	tempDir, err = os.MkdirTemp(".", "site-docs-new-")
-	check(err)
-
-	// Settings
-	gohtml.Condense = true
-
-	copyRawPages("")
-	copyTemplatedPages()
-
-	// Move temp directory to docs directory
-	check(os.RemoveAll("docs"))
-	check(os.Rename(tempDir, "docs"))
-
-	transpileTS()
+type BuildConfig struct {
+	Config       *Config
+	DstMode      fs.FileMode
+	Template     *template.Template
+	Data         map[string]map[string]any
+	TemplateName string
+	SubDir       string
+	Entry        os.DirEntry
 }
 
-func copyRawPages(subDir string) {
-	// Read raw pages
-	rawPages, err := os.ReadDir(path.Join("rawPages", subDir))
-	if err != nil && errors.Is(err, os.ErrNotExist) {
-		fmt.Println("Warning: rawPages directory does not exist")
-		return
-	}
+func (config *BuildConfig) SrcPath() string {
+	return path.Join(config.Config.TemplatedSrcDir, config.TemplateName, config.SubDir, config.Entry.Name())
+}
+
+func (config *BuildConfig) DstPath() string {
+	return path.Join(config.Config.DstDir, config.SubDir, config.Entry.Name())
+}
+
+func (config *BuildConfig) DataPath() string {
+	return path.Join(config.TemplateName, config.SubDir, config.Entry.Name())
+}
+
+func (config *BuildConfig) AppendSubSrc(frag string) {
+	config.SubDir = path.Join(config.SubDir, frag)
+}
+
+func buildTemplated(config *Config, dst_mode fs.FileMode) {
+	dir, err := os.ReadDir(config.TemplatedSrcDir)
 	check(err)
 
-	// Loop over raw pages
-	for _, rawPage := range rawPages {
-		// If it is a directory, run this function over that too
-		if rawPage.Type().IsDir() {
-			err = os.Mkdir(path.Join(tempDir, subDir, rawPage.Name()), 0755)
-			if err != nil && !errors.Is(err, os.ErrExist) {
-				check(err)
-			}
-
-			copyRawPages(path.Join(subDir, rawPage.Name()))
-			continue
-
-		} else if !rawPage.Type().IsRegular() {
-			fmt.Printf("Not a regular file or directory: %s", path.Join("rawPages", subDir, rawPage.Name()))
+	for _, src_dir_meta := range dir {
+		if !src_dir_meta.IsDir() {
+			logger.SetOutput(os.Stderr)
+			logger.Warnf("%v is not a directory! Ignoring", path.Join(config.TemplatedSrcDir, src_dir_meta.Name()))
+			logger.SetOutput(os.Stdout)
 			continue
 		}
 
-		// If it is a TypeScript file and 'inclts' was not provided, skip it
-		if !includeTSFiles && strings.HasSuffix(rawPage.Name(), ".ts") {
-			continue
+		tmpl_name := path.Join(config.TemplateDir, src_dir_meta.Name())
+
+		logger.Debugf("Building template (%v)", tmpl_name)
+		tmpl := getTemplate(tmpl_name)
+
+		config := BuildConfig{
+			Config:       config,
+			DstMode:      dst_mode,
+			Template:     tmpl,
+			Data:         getData(config.DataFile),
+			TemplateName: src_dir_meta.Name(),
+			SubDir:       "",
 		}
 
-		// Copy the raw file to docs
-		rawPageFile, err := os.ReadFile(path.Join("rawPages", subDir, rawPage.Name()))
+		src_dir_path := path.Join(path.Join(config.Config.TemplatedSrcDir, config.TemplateName))
+		src_dir, err := os.ReadDir(src_dir_path)
 		check(err)
 
-		// If the file is a html file and 'fmthtml' was provided, format it
-		if formatHTMLFiles && strings.HasSuffix(rawPage.Name(), ".html") {
-			rawPageFile = gohtml.FormatBytes(rawPageFile)
-		}
+		logger.Debugf("Building directory (%v -> %v)", src_dir_path, config.Config.DstDir)
 
-		check(os.WriteFile(
-			path.Join(tempDir, subDir, rawPage.Name()),
-			rawPageFile,
-			0644,
-		))
+		for _, sub_src := range src_dir {
+			config.Entry = sub_src
+			buildTemplatedRecursive(config)
+		}
 	}
 }
 
-func copyTemplatedPages() {
-	// Get page variables
-	pageVariables := map[string]map[string]any{}
-	pageVariablesFile, err := os.ReadFile("pageVariables.json")
-	if !(err == nil || errors.Is(err, os.ErrNotExist)) {
-		check(err)
-	}
-	if err == nil {
-		json.Unmarshal(pageVariablesFile, &pageVariables)
-	}
+func buildTemplatedRecursive(config BuildConfig) {
+	src_path := config.SrcPath()
+	dst_path := config.DstPath()
 
-	// Get templates
-	templateFiles, err := os.ReadDir("templates")
-	if err != nil && errors.Is(err, os.ErrNotExist) {
-		fmt.Println("Warning: templates directory does not exist")
-		templateFiles = make([]fs.DirEntry, 0)
+	if config.Entry.IsDir() {
+		logger.Debugf("Building directory (%v -> %v)", src_path, dst_path)
+
+		err := os.Mkdir(dst_path, config.DstMode)
+		if err != nil && !errors.Is(err, os.ErrExist) {
+			check(err)
+		}
+
+		dir, err := os.ReadDir(src_path)
+		check(err)
+
+		config.AppendSubSrc(config.Entry.Name())
+
+		for _, sub := range dir {
+			config.Entry = sub
+			buildTemplatedRecursive(config)
+		}
 	} else {
+		logger.Debugf("Building file (%v -> %v)", src_path, dst_path)
+
+		content, err := os.ReadFile(src_path)
 		check(err)
-	}
 
-	// Loop over templates
-	for _, templateFile := range templateFiles {
-		// Template must be built with the Parse(string) method to add all the files to the same template
-		//  Using ParseFiles or ParseGlob creates a new template for each file
-		tmpl := template.New("template")
+		content_tmpl, err := createTemplate("Content").Parse(string(content))
+		check(err)
 
-		// If the template is split over files, add all the files
-		if templateFile.Type().IsDir() {
-			templateDir, err := os.ReadDir(path.Join("templates", templateFile.Name()))
-			check(err)
+		new_tmpl, err := config.Template.Clone()
+		check(err)
 
-			for _, templatePartFile := range templateDir {
-				if !templatePartFile.Type().IsRegular() {
-					fmt.Printf("Not a regular file: %s", path.Join("templates", templateFile.Name(), templatePartFile.Name()))
-					continue
-				}
+		new_tmpl.AddParseTree("Content", content_tmpl.Tree)
 
-				// Read the file
-				templatePart, err := os.ReadFile(path.Join("templates", templateFile.Name(), templatePartFile.Name()))
-				check(err)
+		dst, err := os.Create(dst_path)
+		check(err)
+		defer dst.Close()
 
-				// Add it to the template
-				tmpl, err = tmpl.Parse(string(templatePart))
-				check(err)
+		err = dst.Chmod(config.DstMode)
+		check(err)
+
+		data := buildData(&config)
+
+		if config.Config.FmtTemplatedHtml && path.Ext(config.Entry.Name()) == ".html" {
+			logger.Debug("Formatting HTML")
+
+			preformat := new(bytes.Buffer)
+			err := new_tmpl.Execute(preformat, data)
+			if err != nil {
+				logger.Errorf("Error executing template (%v) on file (%v)", config.TemplateName, src_path)
+				logger.Infof("Error: %v", err)
 			}
 
-		} else if templateFile.Type().IsRegular() {
-			// Read the file
-			templatePart, err := os.ReadFile(path.Join("templates", templateFile.Name()))
-			check(err)
-
-			// Add it to the template
-			tmpl, err = tmpl.Parse(string(templatePart))
-			check(err)
-
+			formatted := gohtml.FormatBytes(preformat.Bytes())
+			dst.Write(formatted)
 		} else {
-			fmt.Printf("Not a regular file or directory: %s", path.Join("templates", templateFile.Name()))
-			continue
-		}
-
-		copyTemplatedDir(templateFile.Name(), "", tmpl, pageVariables)
-	}
-}
-
-func copyTemplatedDir(templateName string, subDir string, tmpl *template.Template, pageVariables map[string]map[string]any) {
-	// Read templated pages
-	templatedPages, err := os.ReadDir(path.Join("templatedPages", templateName, subDir))
-	if err != nil && errors.Is(err, os.ErrNotExist) {
-		fmt.Printf("Warning: no templatedPages directory for template \"%s\"\n", path.Join(templateName, subDir))
-		return
-	}
-	check(err)
-
-	// Loop over templated pages
-	for _, templatedPage := range templatedPages {
-		// If it is a directory, run this function over that too
-		if templatedPage.Type().IsDir() {
-			err = os.Mkdir(path.Join(tempDir, subDir, templatedPage.Name()), 0755)
-			if err != nil && !errors.Is(err, os.ErrExist) {
-				check(err)
-			}
-
-			copyTemplatedDir(templateName, path.Join(subDir, templatedPage.Name()), tmpl, pageVariables)
-			continue
-
-		} else if !templatedPage.Type().IsRegular() {
-			fmt.Printf("Not a regular file or directory: %s", path.Join("templatedPages", templateName, subDir, templatedPage.Name()))
-			continue
-		}
-
-		// Read content of file
-		contentFile, err := os.ReadFile(path.Join("templatedPages", templateName, subDir, templatedPage.Name()))
-		check(err)
-
-		pageTmpl, err := tmpl.Clone()
-		check(err)
-
-		// Add the file to the template as 'Content'
-		pageTmpl, err = pageTmpl.New("Content").Parse(string(contentFile))
-		check(err)
-
-		// Get the page variables
-		data := map[string]any{}
-		if len(pageVariables["default"]) != 0 {
-			for key, value := range pageVariables["default"] {
-				data[key] = value
+			err := new_tmpl.Execute(dst, data)
+			if err != nil {
+				logger.Errorf("Error executing template (%v) on file (%v)", config.TemplateName, src_path)
+				logger.Infof("Error: %v", err)
 			}
 		}
-		if len(pageVariables[templateName]) != 0 {
-			for key, value := range pageVariables[templateName] {
-				data[key] = value
-			}
-		}
-		templatePath := path.Join(templateName, subDir, templatedPage.Name())
-		if len(pageVariables[templatePath]) != 0 {
-			for key, value := range pageVariables[templatePath] {
-				data[key] = value
-			}
-		}
-
-		pageBuffer := bytes.NewBuffer(nil)
-		check(pageTmpl.ExecuteTemplate(pageBuffer, "template", data))
-
-		// Reformat
-		//  Not using gohtml writer because leading blank lines result in a blank output
-		formattedBuffer := gohtml.FormatBytes(pageBuffer.Bytes())
-
-		// Write page to docs
-		check(os.WriteFile(
-			path.Join(tempDir, subDir, templatedPage.Name()),
-			formattedBuffer,
-			0644,
-		))
-	}
-}
-
-func transpileTS() {
-	// Transpile the TypeScript files
-	cmd := exec.Command("npx", "tsc")
-	output := bytes.NewBuffer(nil)
-	cmd.Stdout = output
-
-	err := cmd.Run()
-	if err != nil {
-		// If the error is TS18003, no files were found to transpile, so skip
-		noFiles := strings.Contains(output.String(), "error TS18003")
-		if noFiles {
-			return
-		}
-
-		noTsc := strings.Contains(output.String(), "This is not the tsc command you are looking for")
-		if noTsc {
-			fmt.Println("TypeScript not installed!")
-			fmt.Println("Install typescript using 'npm i typescript'")
-			fmt.Println("TypeScript files not transpiled!")
-			return
-		}
-
-		fmt.Println(output.String())
-		fmt.Println("TypeScript files not transpiled!")
-		return
-	}
-
-	// If there is no error and an output, print it
-	if output.Len() != 0 {
-		fmt.Println("From typescript: (npx tsc)")
-		fmt.Println(output.String())
 	}
 }

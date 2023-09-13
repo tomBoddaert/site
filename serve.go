@@ -1,41 +1,110 @@
 package main
 
 import (
-	"fmt"
+	"errors"
 	"net/http"
-	"net/http/httptest"
 	"os"
+	"path"
+	"strings"
+	"time"
 )
 
-func serve() {
-	fmt.Println("This server should only be used as a test server!")
+const DEFAULT_ADDRESS = "localhost:8080"
 
-	// Get the address from the SITE_ADDRESS environment variable,
-	//  defaulting to localhost:8080
+type Resolve struct {
+	Resolved bool
+	Path     string
+	ModTime  time.Time
+}
+
+type Handler struct {
+	Config *Config
+}
+
+func getServeAddress() string {
 	address := os.Getenv("SITE_ADDRESS")
 	if address == "" {
-		address = "localhost:8080"
+		address = DEFAULT_ADDRESS
 	}
 
-	// Create static file server on docs
-	mux := http.NewServeMux()
+	return address
+}
 
-	dir := http.Dir("docs")
-	fileServer := http.FileServer(dir)
+func resolve(config *Config, url_path string) Resolve {
+	base := path.Join(config.DstDir, url_path)
 
-	mux.HandleFunc("/", func(response http.ResponseWriter, request *http.Request) {
-		// Check for 404 and append '.html' if 404 then serve
-		buf := httptest.NewRecorder()
-		fileServer.ServeHTTP(buf, request)
-		if buf.Result().StatusCode == 404 {
-			request.URL.Path += ".html"
-			fileServer.ServeHTTP(response, request)
-		} else {
-			fileServer.ServeHTTP(response, request)
+	if !strings.HasPrefix(base, config.DstDir) {
+		return Resolve{Resolved: false}
+	}
+
+	entry, err := os.Stat(base)
+	if err != nil {
+		if !errors.Is(err, os.ErrNotExist) {
+			check(err)
 		}
-	})
+	} else {
+		if !entry.IsDir() {
+			return Resolve{
+				Resolved: true,
+				Path:     base,
+				ModTime:  entry.ModTime(),
+			}
+		}
+	}
 
-	fmt.Printf("Hosting on http://%s/\n", address)
+	if !strings.HasSuffix(url_path, ".html") {
+		resolution := resolve(config, url_path+".html")
+		if resolution.Resolved {
+			return resolution
+		}
+	}
 
-	check(http.ListenAndServe(address, mux))
+	if entry != nil && entry.IsDir() {
+		resolution := resolve(config, path.Join(url_path, "index"))
+		if resolution.Resolved {
+			return resolution
+		}
+	}
+
+	return Resolve{Resolved: false}
+}
+
+func (handler Handler) ServeHTTP(res http.ResponseWriter, req *http.Request) {
+	url_path := req.URL.Path
+
+	logger.Debugf("Incoming request (%v)", url_path)
+
+	resolution := resolve(handler.Config, url_path)
+	if !resolution.Resolved {
+		logger.Debugf("Request unresolved (%v -x 404)", url_path)
+		res.WriteHeader(404)
+		resolution = resolve(handler.Config, handler.Config.NotFoundPath)
+	} else {
+		logger.Debugf("Request resolved (%v -> %v)", url_path, resolution.Path)
+	}
+
+	if resolution.Resolved {
+		file, err := os.Open(resolution.Path)
+		check(err)
+		defer file.Close()
+
+		http.ServeContent(res, req, resolution.Path, resolution.ModTime, file)
+	} else {
+		res.Write([]byte("404 - Not Found"))
+	}
+}
+
+func serve(config Config) {
+	logger.SetReportTimestamp(true)
+	logger.Info("Starting server...")
+	logger.SetReportTimestamp(false)
+
+	handler := Handler{Config: &config}
+
+	address := getServeAddress()
+
+	logger.Infof("Hosting on 'http://%v/' (THIS SERVER IS FOR TESTING ONLY! DO NOT EXPOSE IT)", address)
+	logger.Print("Press '[Ctrl] + C' to exit")
+
+	check(http.ListenAndServe(address, handler))
 }

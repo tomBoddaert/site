@@ -1,70 +1,74 @@
 package main
 
 import (
-	"fmt"
 	"os"
+	"strconv"
 	"strings"
+
+	"github.com/charmbracelet/log"
 )
 
 const HELP = `Usage: %s [options]
 
   Options:
     help        Display this help text
+      author    Include information about the author
 
     build       Build the site
-      inclts    Include TypeScript (.ts) files in the output
-      fmthtml   Format HTML (.html) files from rawPages
 
     serve       Serve the site
 
-    debug       Enable debug mode (panic)
+    debug       Enable debug mode`
 
-    author      Information about the author
-`
-
-const AUTHOR = `This program was created by:
+const AUTHOR = `
+This program was created by:
 
   Tom Boddaert
-    https://tomBoddaert.github.io/
+    https://tomBoddaert.com/`
 
-`
+var logger = log.NewWithOptions(
+	os.Stdout,
+	log.Options{
+		TimeFormat: "15:04:05",
+	},
+)
 
-var debugMode = false
+func check(err error) {
+	logger.Helper()
+
+	if err != nil {
+		logger.SetOutput(os.Stderr)
+		logger.Fatalf("Error: %v", err)
+	}
+}
+
+func enableDebug() {
+	logger.SetLevel(log.DebugLevel)
+	logger.SetReportCaller(true)
+
+	logger.Debug("Debug mode enabled")
+}
 
 func main() {
-	// Get the string used to run this program
 	cmd := os.Args[0]
-	// Get the arguments
 	args := os.Args[1:]
 
-	// If no arguments were provided, print the
-	//  help text and exit
-	if len(args) == 0 {
-		fmt.Printf(HELP, cmd)
-		fmt.Println("\nNo options provided!")
-		os.Exit(1)
-	}
-
-	// Set default options
 	doHelp := false
+	doAuthor := false
 	doBuild := false
 	doServe := false
-	doAuthor := false
+	debugMode := false
 
-	// Set options from args
 	for _, arg := range args {
 		switch strings.ToLower(arg) {
 		case "help":
 			doHelp = true
 
+		case "author":
+			doAuthor = true
+
 		case "build":
 			doBuild = true
-
-		case "inclts":
-			includeTSFiles = true
-
-		case "fmthtml":
-			formatHTMLFiles = true
 
 		case "serve":
 			doServe = true
@@ -72,58 +76,98 @@ func main() {
 		case "debug":
 			debugMode = true
 
-		case "author":
-			doAuthor = true
-
 		default:
-			fmt.Printf("Unknown option: '%s'!\nUse '%s help'\n", arg, cmd)
-			os.Exit(1)
+			logger.Fatalf("Unknown option: '%s'! Use '%s help'", arg, cmd)
 		}
 	}
 
-	if doAuthor {
-		fmt.Print(AUTHOR)
+	if debugMode {
+		enableDebug()
 	}
 
 	if doHelp {
-		fmt.Printf(HELP, cmd)
-		if doBuild || doServe {
-			fmt.Println("\nOther options used with 'help', ignoring and exiting!")
-			os.Exit(0)
+		logger.Printf(HELP, cmd)
+
+		if doAuthor {
+			logger.Print(AUTHOR)
 		}
+
+		if doBuild || doServe {
+			logger.Warn("Other options used with 'help', ignoring.")
+		}
+
+		return
 	}
+
+	if doAuthor {
+		logger.Warn("'author' used without 'help', ignoring.")
+	}
+
+	if !doBuild && !doServe {
+		logger.Fatalf("Nothing to do! Use '%s help'!", cmd)
+	}
+
+	config := getConfig()
 
 	if doBuild {
-		build()
-		fmt.Println("Site built successfully")
-	}
-
-	// If 'inclts' was provided without 'build', print a warning
-	if includeTSFiles && !doBuild {
-		fmt.Println("\n'inclts' option used without 'build', ignoring")
-	}
-
-	// If 'fmthtml' was provided without 'build', print a warning
-	if formatHTMLFiles && !doBuild {
-		fmt.Println("\n'fmthtml' option used without 'build', ignoring")
+		build(config)
 	}
 
 	if doServe {
-		serve()
+		serve(config)
 	}
 }
 
-// Error handling
-func check(err error) {
-	if err != nil {
-		// In debug mode, panic, otherwise print some generic
-		//  error text and exit with an error code
-		if debugMode {
-			panic(err)
-		} else {
-			fmt.Println("There was an error!")
-			fmt.Println("Please use debug mode or contact me (use the 'author' subcommand)")
-			os.Exit(1)
-		}
+func build(config Config) {
+	// Parse the destination file mode
+	mode_number, err := strconv.ParseUint(config.DstMode, 8, 32)
+	check(err)
+	dst_mode := os.FileMode(mode_number)
+
+	logger.SetReportTimestamp(true)
+	logger.Info("Creating temp directory...")
+	logger.SetReportTimestamp(false)
+
+	temp_dir, err := os.MkdirTemp(".", "site-build-*")
+	check(err)
+	// Set the output directory to the temp directory
+	out_dir := config.DstDir
+	config.DstDir = temp_dir
+
+	logger.Debugf("Created temp directory (%v)", temp_dir)
+
+	logger.SetReportTimestamp(true)
+	logger.Info("Copying raw pages...")
+	logger.SetReportTimestamp(false)
+
+	copyRaw(&config, dst_mode)
+
+	logger.SetReportTimestamp(true)
+	logger.Info("Building templated pages...")
+	logger.SetReportTimestamp(false)
+
+	buildTemplated(&config, dst_mode)
+
+	logger.SetReportTimestamp(true)
+	logger.Info("Replacing old build...")
+	logger.SetReportTimestamp(false)
+
+	logger.Debugf("Renaming directory (%v -> %v)", temp_dir, out_dir)
+
+	check(os.RemoveAll(out_dir))
+	check(os.Rename(temp_dir, out_dir))
+
+	if config.TranspileTS {
+		logger.SetReportTimestamp(true)
+		logger.Info("Transpiling TS...")
+		logger.SetReportTimestamp(false)
+
+		transpileTS(config.TSArgs)
+	} else {
+		logger.Info("Skipping transpiling TS (set in config)")
 	}
+
+	logger.SetReportTimestamp(true)
+	logger.Info("Done")
+	logger.SetReportTimestamp(false)
 }
