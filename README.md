@@ -122,10 +122,14 @@ site help
 site build
 ```
 
+![A GIF showing the build output.](vhs/build.gif)
+
 ### Serving:
 ```sh
 site serve
 ```
+
+![A GIF showing the serve output.](vhs/serve.gif)
 
 #### Serving on a different address:
 Linux:
@@ -149,6 +153,8 @@ site serve
 ```sh
 site build serve
 ```
+
+![A GIF showing the build and serve output.](vhs/buildServe.gif)
 
 ## License
 

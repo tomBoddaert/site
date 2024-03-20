@@ -1,3 +1,7 @@
 # The compiled program
 site
 site.exe
+vhs/site
+
+# The extracted example for vhs
+vhs/site-example
