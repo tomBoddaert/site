@@ -13,8 +13,8 @@ type Config struct {
 	DstDir           string
 	DstMode          string
 	DataFile         string
-	FmtTemplatedHtml bool
-	FmtRawHtml       bool
+	FmtTemplatedHTML bool `json:"FmtTemplatedHtml"`
+	FmtRawHTML       bool `json:"FmtRawHtml"`
 	TranspileTS      bool
 	TSArgs           []string
 	IncludeTS        bool
@@ -31,8 +31,8 @@ var defaultConfig = Config{
 	DstDir:           "out",
 	DstMode:          "0755",
 	DataFile:         "data.json",
-	FmtTemplatedHtml: false,
-	FmtRawHtml:       false,
+	FmtTemplatedHTML: false,
+	FmtRawHTML:       false,
 	TranspileTS:      true,
 	TSArgs:           []string{},
 	IncludeTS:        false,

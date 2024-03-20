@@ -5,10 +5,10 @@ import (
 	"strings"
 )
 
-func transpileTS(ts_args []string) {
-	args := make([]string, 0, len(ts_args)+1)
+func transpileTS(tsArgs []string) {
+	args := make([]string, 0, len(tsArgs)+1)
 	args = append(args, "tsc")
-	args = append(args, ts_args...)
+	args = append(args, tsArgs...)
 
 	cmd := exec.Command("npx", args...)
 	out := new(strings.Builder)

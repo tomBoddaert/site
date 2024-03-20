@@ -48,18 +48,18 @@ func copyRaw(config *Config, dstMode os.FileMode) {
 }
 
 func copyRawRecursive(config RawConfig) {
-	src_path := config.SrcPath()
-	dst_path := config.DstPath()
+	srcPath := config.SrcPath()
+	dstPath := config.DstPath()
 
 	if config.Entry.IsDir() {
-		logger.Debugf("Copying directory (%v -> %v)", src_path, dst_path)
+		logger.Debugf("Copying directory (%v -> %v)", srcPath, dstPath)
 
-		err := os.Mkdir(dst_path, config.DstMode)
+		err := os.Mkdir(dstPath, config.DstMode)
 		if err != nil && !errors.Is(err, os.ErrExist) {
 			check(err)
 		}
 
-		dir, err := os.ReadDir(src_path)
+		dir, err := os.ReadDir(srcPath)
 		check(err)
 
 		config.AppendSubSrc(config.Entry.Name())
@@ -70,24 +70,24 @@ func copyRawRecursive(config RawConfig) {
 		}
 	} else {
 		if !config.Config.IncludeTS && path.Ext(config.Entry.Name()) == ".ts" {
-			logger.Debugf("Ignoring TS file (%v)", src_path)
+			logger.Debugf("Ignoring TS file (%v)", srcPath)
 			return
 		}
 
-		logger.Debugf("Copying file (%v -> %v)", src_path, dst_path)
+		logger.Debugf("Copying file (%v -> %v)", srcPath, dstPath)
 
-		src, err := os.Open(src_path)
+		src, err := os.Open(srcPath)
 		check(err)
 		defer src.Close()
 
-		dst, err := os.Create(dst_path)
+		dst, err := os.Create(dstPath)
 		check(err)
 		defer dst.Close()
 
 		err = dst.Chmod(config.DstMode)
 		check(err)
 
-		if config.Config.FmtRawHtml && path.Ext(config.Entry.Name()) == ".html" {
+		if config.Config.FmtRawHTML && path.Ext(config.Entry.Name()) == ".html" {
 			logger.Debug("Formatting HTML file")
 
 			preformat := new(bytes.Buffer)

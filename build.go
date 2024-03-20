@@ -37,58 +37,58 @@ func (config *BuildConfig) AppendSubSrc(frag string) {
 	config.SubDir = path.Join(config.SubDir, frag)
 }
 
-func buildTemplated(config *Config, dst_mode fs.FileMode) {
+func buildTemplated(config *Config, dstMode fs.FileMode) {
 	dir, err := os.ReadDir(config.TemplatedSrcDir)
 	check(err)
 
-	for _, src_dir_meta := range dir {
-		if !src_dir_meta.IsDir() {
+	for _, srcDirMeta := range dir {
+		if !srcDirMeta.IsDir() {
 			logger.SetOutput(os.Stderr)
-			logger.Warnf("%v is not a directory! Ignoring", path.Join(config.TemplatedSrcDir, src_dir_meta.Name()))
+			logger.Warnf("%v is not a directory! Ignoring", path.Join(config.TemplatedSrcDir, srcDirMeta.Name()))
 			logger.SetOutput(os.Stdout)
 			continue
 		}
 
-		tmpl_name := path.Join(config.TemplateDir, src_dir_meta.Name())
+		tmplName := path.Join(config.TemplateDir, srcDirMeta.Name())
 
-		logger.Debugf("Building template (%v)", tmpl_name)
-		tmpl := getTemplate(tmpl_name)
+		logger.Debugf("Building template (%v)", tmplName)
+		tmpl := getTemplate(tmplName)
 
 		config := BuildConfig{
 			Config:       config,
-			DstMode:      dst_mode,
+			DstMode:      dstMode,
 			Template:     tmpl,
 			Data:         getData(config.DataFile),
-			TemplateName: src_dir_meta.Name(),
+			TemplateName: srcDirMeta.Name(),
 			SubDir:       "",
 		}
 
-		src_dir_path := path.Join(path.Join(config.Config.TemplatedSrcDir, config.TemplateName))
-		src_dir, err := os.ReadDir(src_dir_path)
+		srcDirPath := path.Join(path.Join(config.Config.TemplatedSrcDir, config.TemplateName))
+		srcDir, err := os.ReadDir(srcDirPath)
 		check(err)
 
-		logger.Debugf("Building directory (%v -> %v)", src_dir_path, config.Config.DstDir)
+		logger.Debugf("Building directory (%v -> %v)", srcDirPath, config.Config.DstDir)
 
-		for _, sub_src := range src_dir {
-			config.Entry = sub_src
+		for _, subSrc := range srcDir {
+			config.Entry = subSrc
 			buildTemplatedRecursive(config)
 		}
 	}
 }
 
 func buildTemplatedRecursive(config BuildConfig) {
-	src_path := config.SrcPath()
-	dst_path := config.DstPath()
+	srcPath := config.SrcPath()
+	dstPath := config.DstPath()
 
 	if config.Entry.IsDir() {
-		logger.Debugf("Building directory (%v -> %v)", src_path, dst_path)
+		logger.Debugf("Building directory (%v -> %v)", srcPath, dstPath)
 
-		err := os.Mkdir(dst_path, config.DstMode)
+		err := os.Mkdir(dstPath, config.DstMode)
 		if err != nil && !errors.Is(err, os.ErrExist) {
 			check(err)
 		}
 
-		dir, err := os.ReadDir(src_path)
+		dir, err := os.ReadDir(srcPath)
 		check(err)
 
 		config.AppendSubSrc(config.Entry.Name())
@@ -98,20 +98,20 @@ func buildTemplatedRecursive(config BuildConfig) {
 			buildTemplatedRecursive(config)
 		}
 	} else {
-		logger.Debugf("Building file (%v -> %v)", src_path, dst_path)
+		logger.Debugf("Building file (%v -> %v)", srcPath, dstPath)
 
-		content, err := os.ReadFile(src_path)
+		content, err := os.ReadFile(srcPath)
 		check(err)
 
-		content_tmpl, err := createTemplate("Content").Parse(string(content))
+		contentTmpl, err := createTemplate("Content").Parse(string(content))
 		check(err)
 
-		new_tmpl, err := config.Template.Clone()
+		newTmpl, err := config.Template.Clone()
 		check(err)
 
-		new_tmpl.AddParseTree("Content", content_tmpl.Tree)
+		newTmpl.AddParseTree("Content", contentTmpl.Tree)
 
-		dst, err := os.Create(dst_path)
+		dst, err := os.Create(dstPath)
 		check(err)
 		defer dst.Close()
 
@@ -120,22 +120,22 @@ func buildTemplatedRecursive(config BuildConfig) {
 
 		data := buildData(&config)
 
-		if config.Config.FmtTemplatedHtml && path.Ext(config.Entry.Name()) == ".html" {
+		if config.Config.FmtTemplatedHTML && path.Ext(config.Entry.Name()) == ".html" {
 			logger.Debug("Formatting HTML")
 
 			preformat := new(bytes.Buffer)
-			err := new_tmpl.Execute(preformat, data)
+			err := newTmpl.Execute(preformat, data)
 			if err != nil {
-				logger.Errorf("Error executing template (%v) on file (%v)", config.TemplateName, src_path)
+				logger.Errorf("Error executing template (%v) on file (%v)", config.TemplateName, srcPath)
 				logger.Infof("Error: %v", err)
 			}
 
 			formatted := gohtml.FormatBytes(preformat.Bytes())
 			dst.Write(formatted)
 		} else {
-			err := new_tmpl.Execute(dst, data)
+			err := newTmpl.Execute(dst, data)
 			if err != nil {
-				logger.Errorf("Error executing template (%v) on file (%v)", config.TemplateName, src_path)
+				logger.Errorf("Error executing template (%v) on file (%v)", config.TemplateName, srcPath)
 				logger.Infof("Error: %v", err)
 			}
 		}

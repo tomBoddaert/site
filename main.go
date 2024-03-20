@@ -120,42 +120,42 @@ func main() {
 
 func build(config Config) {
 	// Parse the destination file mode
-	mode_number, err := strconv.ParseUint(config.DstMode, 8, 32)
+	modeNumber, err := strconv.ParseUint(config.DstMode, 8, 32)
 	check(err)
-	dst_mode := os.FileMode(mode_number)
+	dstMode := os.FileMode(modeNumber)
 
 	logger.SetReportTimestamp(true)
 	logger.Info("Creating temp directory...")
 	logger.SetReportTimestamp(false)
 
-	temp_dir, err := os.MkdirTemp(".", "site-build-*")
+	tempDir, err := os.MkdirTemp(".", "site-build-*")
 	check(err)
 	// Set the output directory to the temp directory
-	out_dir := config.DstDir
-	config.DstDir = temp_dir
+	outDir := config.DstDir
+	config.DstDir = tempDir
 
-	logger.Debugf("Created temp directory (%v)", temp_dir)
+	logger.Debugf("Created temp directory (%v)", tempDir)
 
 	logger.SetReportTimestamp(true)
 	logger.Info("Copying raw pages...")
 	logger.SetReportTimestamp(false)
 
-	copyRaw(&config, dst_mode)
+	copyRaw(&config, dstMode)
 
 	logger.SetReportTimestamp(true)
 	logger.Info("Building templated pages...")
 	logger.SetReportTimestamp(false)
 
-	buildTemplated(&config, dst_mode)
+	buildTemplated(&config, dstMode)
 
 	logger.SetReportTimestamp(true)
 	logger.Info("Replacing old build...")
 	logger.SetReportTimestamp(false)
 
-	logger.Debugf("Renaming directory (%v -> %v)", temp_dir, out_dir)
+	logger.Debugf("Renaming directory (%v -> %v)", tempDir, outDir)
 
-	check(os.RemoveAll(out_dir))
-	check(os.Rename(temp_dir, out_dir))
+	check(os.RemoveAll(outDir))
+	check(os.Rename(tempDir, outDir))
 
 	if config.TranspileTS {
 		logger.SetReportTimestamp(true)

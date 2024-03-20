@@ -29,14 +29,14 @@ func getTemplateText(name string) string {
 		dir, err := os.ReadDir(name)
 		check(err)
 
-		for _, file_meta := range dir {
-			if file_meta.Type().IsDir() {
-				logger.Warnf("%v is a directory! Ignoring", path.Join(name, file_meta.Name()))
+		for _, fileMeta := range dir {
+			if fileMeta.Type().IsDir() {
+				logger.Warnf("%v is a directory! Ignoring", path.Join(name, fileMeta.Name()))
 				continue
 			}
 
-			file_path := path.Join(name, file_meta.Name())
-			appendFileToBuf(file_path, buf)
+			filePath := path.Join(name, fileMeta.Name())
+			appendFileToBuf(filePath, buf)
 		}
 	} else {
 		appendFileToBuf(name, buf)
@@ -50,8 +50,8 @@ func createTemplate(name string) *template.Template {
 }
 
 func getTemplate(name string) *template.Template {
-	tmpl_text := getTemplateText(name)
-	tmpl, err := createTemplate("template").Parse(tmpl_text)
+	tmplText := getTemplateText(name)
+	tmpl, err := createTemplate("template").Parse(tmplText)
 	check(err)
 
 	return tmpl

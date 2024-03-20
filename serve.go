@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-const DEFAULT_ADDRESS = "localhost:8080"
+const DefaultAddress = "localhost:8080"
 
 type Resolve struct {
 	Resolved bool
@@ -24,14 +24,14 @@ type Handler struct {
 func getServeAddress() string {
 	address := os.Getenv("SITE_ADDRESS")
 	if address == "" {
-		address = DEFAULT_ADDRESS
+		address = DefaultAddress
 	}
 
 	return address
 }
 
-func resolve(config *Config, url_path string) Resolve {
-	base := path.Join(config.DstDir, url_path)
+func resolve(config *Config, urlPath string) Resolve {
+	base := path.Join(config.DstDir, urlPath)
 
 	if !strings.HasPrefix(base, config.DstDir) {
 		return Resolve{Resolved: false}
@@ -52,15 +52,15 @@ func resolve(config *Config, url_path string) Resolve {
 		}
 	}
 
-	if !strings.HasSuffix(url_path, ".html") {
-		resolution := resolve(config, url_path+".html")
+	if !strings.HasSuffix(urlPath, ".html") {
+		resolution := resolve(config, urlPath+".html")
 		if resolution.Resolved {
 			return resolution
 		}
 	}
 
 	if entry != nil && entry.IsDir() {
-		resolution := resolve(config, path.Join(url_path, "index"))
+		resolution := resolve(config, path.Join(urlPath, "index"))
 		if resolution.Resolved {
 			return resolution
 		}
@@ -70,17 +70,17 @@ func resolve(config *Config, url_path string) Resolve {
 }
 
 func (handler Handler) ServeHTTP(res http.ResponseWriter, req *http.Request) {
-	url_path := req.URL.Path
+	urlPath := req.URL.Path
 
-	logger.Debugf("Incoming request (%v)", url_path)
+	logger.Debugf("Incoming request (%v)", urlPath)
 
-	resolution := resolve(handler.Config, url_path)
+	resolution := resolve(handler.Config, urlPath)
 	if !resolution.Resolved {
-		logger.Debugf("Request unresolved (%v -x 404)", url_path)
+		logger.Debugf("Request unresolved (%v -x 404)", urlPath)
 		res.WriteHeader(404)
 		resolution = resolve(handler.Config, handler.Config.NotFoundPath)
 	} else {
-		logger.Debugf("Request resolved (%v -> %v)", url_path, resolution.Path)
+		logger.Debugf("Request resolved (%v -> %v)", urlPath, resolution.Path)
 	}
 
 	if resolution.Resolved {
