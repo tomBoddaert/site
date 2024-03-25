@@ -11,91 +11,72 @@ import (
 	"github.com/yosssi/gohtml"
 )
 
-type BuildConfig struct {
-	Config       *Config
-	DstMode      fs.FileMode
-	Template     *template.Template
+type buildConfig struct {
+	*Config
+	*template.Template
 	Data         map[string]map[string]any
 	TemplateName string
-	SubDir       string
-	Entry        os.DirEntry
 }
 
-func (config *BuildConfig) SrcPath() string {
-	return path.Join(config.Config.TemplatedSrcDir, config.TemplateName, config.SubDir, config.Entry.Name())
-}
-
-func (config *BuildConfig) DstPath() string {
-	return path.Join(config.Config.DstDir, config.SubDir, config.Entry.Name())
-}
-
-func (config *BuildConfig) DataPath() string {
-	return path.Join(config.TemplateName, config.SubDir, config.Entry.Name())
-}
-
-func (config *BuildConfig) AppendSubSrc(frag string) {
-	config.SubDir = path.Join(config.SubDir, frag)
-}
-
-func buildTemplated(config *Config, dstMode fs.FileMode) {
+func BuildTemplated(config *Config) {
 	dir, err := os.ReadDir(config.TemplatedSrcDir)
 	check(err)
+
+	data := GetData(config.DataFile)
 
 	for _, srcDirMeta := range dir {
 		if !srcDirMeta.IsDir() {
 			logger.SetOutput(os.Stderr)
-			logger.Warnf("%v is not a directory! Ignoring", path.Join(config.TemplatedSrcDir, srcDirMeta.Name()))
+			logger.Errorf("Template content is not a directory (%v)", path.Join(config.TemplatedSrcDir, srcDirMeta.Name()))
 			logger.SetOutput(os.Stdout)
+
 			continue
 		}
 
-		tmplName := path.Join(config.TemplateDir, srcDirMeta.Name())
+		tmplPath := path.Join(config.TemplateDir, srcDirMeta.Name())
 
-		logger.Debugf("Building template (%v)", tmplName)
-		tmpl := getTemplate(tmplName)
+		logger.Debugf("Building template (%v)", tmplPath)
+		tmpl := GetTemplate(config, srcDirMeta.Name())
+		if tmpl == nil {
+			continue
+		}
 
-		config := BuildConfig{
+		config := buildConfig{
 			Config:       config,
-			DstMode:      dstMode,
 			Template:     tmpl,
-			Data:         getData(config.DataFile),
+			Data:         data,
 			TemplateName: srcDirMeta.Name(),
-			SubDir:       "",
 		}
 
-		srcDirPath := path.Join(path.Join(config.Config.TemplatedSrcDir, config.TemplateName))
-		srcDir, err := os.ReadDir(srcDirPath)
+		srcDirPath := path.Join(config.Config.TemplatedSrcDir, config.TemplateName)
+		srcDir := os.DirFS(srcDirPath)
+		err := fs.WalkDir(srcDir, ".", config.buildWalk)
 		check(err)
-
-		logger.Debugf("Building directory (%v -> %v)", srcDirPath, config.Config.DstDir)
-
-		for _, subSrc := range srcDir {
-			config.Entry = subSrc
-			buildTemplatedRecursive(config)
-		}
 	}
 }
 
-func buildTemplatedRecursive(config BuildConfig) {
-	srcPath := config.SrcPath()
-	dstPath := config.DstPath()
+func (config *buildConfig) buildWalk(path_ string, d fs.DirEntry, err error) error {
+	excludeMatch, excludeIndex := PathMatch(path_, config.ExcludePaths)
+	if excludeMatch != nil {
+		logger.Debugf("Excluding path (%v): rule %v", *excludeMatch, excludeIndex+1)
 
-	if config.Entry.IsDir() {
+		if d.IsDir() {
+			return fs.SkipDir
+		} else {
+			return nil
+		}
+	}
+
+	srcPath := path.Join(config.Config.TemplatedSrcDir, config.TemplateName, path_)
+	dstPath := path.Join(config.DstDir, path_)
+
+	if d.IsDir() {
+		check(err)
 		logger.Debugf("Building directory (%v -> %v)", srcPath, dstPath)
 
-		err := os.Mkdir(dstPath, config.DstMode)
+		err := os.Mkdir(dstPath, config.Config.DstMode.FileMode)
 		if err != nil && !errors.Is(err, os.ErrExist) {
 			check(err)
-		}
-
-		dir, err := os.ReadDir(srcPath)
-		check(err)
-
-		config.AppendSubSrc(config.Entry.Name())
-
-		for _, sub := range dir {
-			config.Entry = sub
-			buildTemplatedRecursive(config)
 		}
 	} else {
 		logger.Debugf("Building file (%v -> %v)", srcPath, dstPath)
@@ -104,8 +85,17 @@ func buildTemplatedRecursive(config BuildConfig) {
 		check(err)
 
 		contentTmpl, err := createTemplate("Content").Parse(string(content))
-		check(err)
+		if err != nil {
+			logger.SetOutput(os.Stderr)
+			logger.Errorf("Failed to parse template (%v): %v", srcPath, err.Error())
+			logger.SetOutput(os.Stdout)
 
+			return nil
+		}
+
+		// Clone the template so that the original is not affected
+		// This is used because if Content is entirely whitespace and comments,
+		// the previous one is used, which we don't want
 		newTmpl, err := config.Template.Clone()
 		check(err)
 
@@ -115,12 +105,12 @@ func buildTemplatedRecursive(config BuildConfig) {
 		check(err)
 		defer dst.Close()
 
-		err = dst.Chmod(config.DstMode)
+		err = dst.Chmod(config.Config.DstMode.FileMode)
 		check(err)
 
-		data := buildData(&config)
+		data := BuildData(config, path_)
 
-		if config.Config.FmtTemplatedHTML && path.Ext(config.Entry.Name()) == ".html" {
+		if config.Config.FmtTemplatedHTML && path.Ext(d.Name()) == ".html" {
 			logger.Debug("Formatting HTML")
 
 			preformat := new(bytes.Buffer)
@@ -140,4 +130,7 @@ func buildTemplatedRecursive(config BuildConfig) {
 			}
 		}
 	}
+
+	return nil
+
 }

@@ -2,7 +2,6 @@ package main
 
 import (
 	"os"
-	"strconv"
 	"strings"
 
 	"github.com/charmbracelet/log"
@@ -18,7 +17,11 @@ const HELP = `Usage: %s [options]
 
     serve       Serve the site
 
-    debug       Enable debug mode`
+    debug       Enable debug mode
+
+  Environment Variables:
+    SITE_ADDRESS    The address and port for serve to listen on
+                    (address:port)`
 
 const AUTHOR = `
 This program was created by:
@@ -38,7 +41,7 @@ func check(err error) {
 
 	if err != nil {
 		logger.SetOutput(os.Stderr)
-		logger.Fatalf("Error: %v", err)
+		logger.Fatalf(err.Error())
 	}
 }
 
@@ -114,15 +117,20 @@ func main() {
 	}
 
 	if doServe {
-		serve(config)
+		Serve(config)
 	}
 }
 
 func build(config Config) {
-	// Parse the destination file mode
-	modeNumber, err := strconv.ParseUint(config.DstMode, 8, 32)
-	check(err)
-	dstMode := os.FileMode(modeNumber)
+	if len(config.PrebuildCmds) != 0 {
+		logger.SetReportTimestamp(true)
+		logger.Info("Running prebuild commands...")
+		logger.SetReportTimestamp(false)
+
+		RunCmds(config.PrebuildCmds)
+	} else {
+		logger.Debug("No prebuild commands to run")
+	}
 
 	logger.SetReportTimestamp(true)
 	logger.Info("Creating temp directory...")
@@ -140,13 +148,13 @@ func build(config Config) {
 	logger.Info("Copying raw pages...")
 	logger.SetReportTimestamp(false)
 
-	copyRaw(&config, dstMode)
+	CopyRaw(&config)
 
 	logger.SetReportTimestamp(true)
 	logger.Info("Building templated pages...")
 	logger.SetReportTimestamp(false)
 
-	buildTemplated(&config, dstMode)
+	BuildTemplated(&config)
 
 	logger.SetReportTimestamp(true)
 	logger.Info("Replacing old build...")
@@ -157,14 +165,14 @@ func build(config Config) {
 	check(os.RemoveAll(outDir))
 	check(os.Rename(tempDir, outDir))
 
-	if config.TranspileTS {
+	if len(config.PostbuildCmds) != 0 {
 		logger.SetReportTimestamp(true)
-		logger.Info("Transpiling TS...")
+		logger.Info("Running postbuild commands...")
 		logger.SetReportTimestamp(false)
 
-		transpileTS(config.TSArgs)
+		RunCmds(config.PostbuildCmds)
 	} else {
-		logger.Info("Skipping transpiling TS (set in config)")
+		logger.Debug("No postbuild commands to run")
 	}
 
 	logger.SetReportTimestamp(true)

@@ -49,16 +49,17 @@ This file sets the config for site. The default config (do not use comments):
 ```js
 {
   "TemplateDir":      "templates", // Sets the template directory
+  "TemplateRootFile": "root.json", // Sets the root file of templates
   "TemplatedSrcDir":  "pages",     // Sets the templated page directory
   "RawSrcDir":        "raw",       // Sets the raw directory
   "DstDir":           "out",       // Sets the output directory
   "DstMode":          "0755",      // Sets the file permissions for the output (octal)
   "DataFile":         "data.json", // Sets the file data is read from
-  "FmtTemplatedHtml": false,       // Formats templated html files (may be slow)
-  "FmtRawHtml":       false,       // Formats raw html files (may be slow)
-  "TranspileTS":      true,        // Runs tsc to transpile TS
-  "TSArgs":           [],          // Arguments to tsc (npx tsc [args])
-  "IncludeTS":        false,       // Include TS files in the output
+  "FmtTemplatedHtml": false,       // Formats templated html files
+  "FmtRawHtml":       false,       // Formats raw html files
+  "ExcludePaths":     [],          // Regular expressions that match paths to ignore
+  "PrebuildCmds":     [],          // Commands to run before building
+  "PostbuildCmds":    [],          // Commands to run after building
 
   "NotFoundPath":     "404"        // 404 page (serve)
 }
@@ -107,8 +108,9 @@ The file can generated with:
 npx tsc --init
 ```
 
-`outFile` could be used to transpile a separate directory of TypeScript to one file of JavaScript. See the [tsconfig docs](https://aka.ms/tsconfig) for more information.
-`rootDir` and `include` could be changed to separate TypeScript from the pages.
+`outFile` could be used to transpile a separate directory of TypeScript to one file of JavaScript. See the [tsconfig docs](https://aka.ms/tsconfig) for more information.  
+`rootDir` and `include` could be changed to separate TypeScript from the pages.  
+`outDir` could be changed if you want to use the output JavaScript in a template.
 
 ## Using the tool
 
@@ -155,6 +157,18 @@ site build serve
 ```
 
 ![A GIF showing the build and serve output.](vhs/buildServe.gif)
+
+## Building TypeScript
+
+Adding TypeScript building to your site is easy, just add the following to the `siteConfig.json` file:
+```json
+{
+  "ExcludePaths": ["\\.m?ts$"],
+  "PostbuildCmds": [
+    ["npx", "tsc"]
+  ]
+}
+```
 
 ## License
 

@@ -4,9 +4,10 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"path"
 )
 
-func getData(path string) map[string]map[string]any {
+func GetData(path string) map[string]map[string]any {
 	data := make(map[string]map[string]any)
 
 	file, err := os.Open(path)
@@ -15,10 +16,13 @@ func getData(path string) map[string]map[string]any {
 			check(err)
 		}
 
+		logger.Debugf("No data found (%v)", path)
+
 		return data
 	}
-
 	defer file.Close()
+
+	logger.Debugf("Found data (%v)", path)
 
 	decoder := json.NewDecoder(file)
 	err = decoder.Decode(&data)
@@ -27,7 +31,7 @@ func getData(path string) map[string]map[string]any {
 	return data
 }
 
-func buildData(config *BuildConfig) map[string]any {
+func BuildData(config *buildConfig, path_ string) map[string]any {
 	data := make(map[string]any)
 
 	for key, value := range config.Data["default"] {
@@ -38,7 +42,8 @@ func buildData(config *BuildConfig) map[string]any {
 		data[key] = value
 	}
 
-	for key, value := range config.Data[config.DataPath()] {
+	dataPath := path.Join(config.TemplateName, path_)
+	for key, value := range config.Data[dataPath] {
 		data[key] = value
 	}
 

@@ -4,76 +4,47 @@ import (
 	"bytes"
 	"errors"
 	"io"
+	"io/fs"
 	"os"
 	"path"
 
 	"github.com/yosssi/gohtml"
 )
 
-type RawConfig struct {
-	Config  *Config
-	DstMode os.FileMode
-	SubSrc  string
-	Entry   os.DirEntry
-}
-
-func (config *RawConfig) SrcPath() string {
-	return path.Join(config.Config.RawSrcDir, config.SubSrc, config.Entry.Name())
-}
-
-func (config *RawConfig) DstPath() string {
-	return path.Join(config.Config.DstDir, config.SubSrc, config.Entry.Name())
-}
-
-func (config *RawConfig) AppendSubSrc(frag string) {
-	config.SubSrc = path.Join(config.SubSrc, frag)
-}
-
-func copyRaw(config *Config, dstMode os.FileMode) {
-	dir, err := os.ReadDir(config.RawSrcDir)
-	if err != nil && errors.Is(err, os.ErrNotExist) {
+func CopyRaw(config *Config) {
+	root := os.DirFS(config.RawSrcDir)
+	err := fs.WalkDir(root, ".", config.copyRawWalk)
+	if err != nil && errors.Is(err, fs.ErrNotExist) {
 		logger.Warnf("No raw directory found (%v)", config.RawSrcDir)
 		return
 	}
-	check(err)
-
-	for _, sub := range dir {
-		copyRawRecursive(RawConfig{
-			Config:  config,
-			DstMode: dstMode,
-			SubSrc:  "",
-			Entry:   sub,
-		})
-	}
 }
 
-func copyRawRecursive(config RawConfig) {
-	srcPath := config.SrcPath()
-	dstPath := config.DstPath()
+func (config *Config) copyRawWalk(path_ string, d fs.DirEntry, err error) error {
+	excludeMatch, excludeIndex := PathMatch(path_, config.ExcludePaths)
+	if excludeMatch != nil {
+		logger.Debugf("Excluding path (%v): rule %v", *excludeMatch, excludeIndex+1)
 
-	if config.Entry.IsDir() {
+		if d.IsDir() {
+			return fs.SkipDir
+		} else {
+			return nil
+		}
+	}
+
+	check(err)
+
+	srcPath := path.Join(config.RawSrcDir, path_)
+	dstPath := path.Join(config.DstDir, path_)
+
+	if d.IsDir() {
 		logger.Debugf("Copying directory (%v -> %v)", srcPath, dstPath)
 
-		err := os.Mkdir(dstPath, config.DstMode)
+		err := os.Mkdir(dstPath, config.DstMode.FileMode)
 		if err != nil && !errors.Is(err, os.ErrExist) {
 			check(err)
 		}
-
-		dir, err := os.ReadDir(srcPath)
-		check(err)
-
-		config.AppendSubSrc(config.Entry.Name())
-
-		for _, sub := range dir {
-			config.Entry = sub
-			copyRawRecursive(config)
-		}
 	} else {
-		if !config.Config.IncludeTS && path.Ext(config.Entry.Name()) == ".ts" {
-			logger.Debugf("Ignoring TS file (%v)", srcPath)
-			return
-		}
-
 		logger.Debugf("Copying file (%v -> %v)", srcPath, dstPath)
 
 		src, err := os.Open(srcPath)
@@ -84,10 +55,10 @@ func copyRawRecursive(config RawConfig) {
 		check(err)
 		defer dst.Close()
 
-		err = dst.Chmod(config.DstMode)
+		err = dst.Chmod(config.DstMode.FileMode)
 		check(err)
 
-		if config.Config.FmtRawHTML && path.Ext(config.Entry.Name()) == ".html" {
+		if config.FmtRawHTML && path.Ext(d.Name()) == ".html" {
 			logger.Debug("Formatting HTML file")
 
 			preformat := new(bytes.Buffer)
@@ -95,10 +66,13 @@ func copyRawRecursive(config RawConfig) {
 			check(err)
 
 			formatted := gohtml.FormatBytes(preformat.Bytes())
-			dst.Write(formatted)
+			_, err = dst.Write(formatted)
+			check(err)
 		} else {
-			_, err = io.Copy(dst, src)
+			_, err := io.Copy(dst, src)
 			check(err)
 		}
 	}
+
+	return nil
 }

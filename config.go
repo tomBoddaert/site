@@ -3,21 +3,23 @@ package main
 import (
 	"encoding/json"
 	"errors"
+	"io/fs"
 	"os"
 )
 
 type Config struct {
 	TemplateDir      string
+	TemplateRootFile string
 	TemplatedSrcDir  string
 	RawSrcDir        string
 	DstDir           string
-	DstMode          string
+	DstMode          FileMode
 	DataFile         string
 	FmtTemplatedHTML bool `json:"FmtTemplatedHtml"`
 	FmtRawHTML       bool `json:"FmtRawHtml"`
-	TranspileTS      bool
-	TSArgs           []string
-	IncludeTS        bool
+	ExcludePaths     []Regexp
+	PrebuildCmds     [][]string
+	PostbuildCmds    [][]string
 
 	NotFoundPath string
 }
@@ -26,16 +28,17 @@ const configPath = "siteConfig.json"
 
 var defaultConfig = Config{
 	TemplateDir:      "templates",
+	TemplateRootFile: "root.html",
 	TemplatedSrcDir:  "pages",
 	RawSrcDir:        "raw",
 	DstDir:           "out",
-	DstMode:          "0755",
+	DstMode:          FileMode{fs.FileMode(0755)},
 	DataFile:         "data.json",
 	FmtTemplatedHTML: false,
 	FmtRawHTML:       false,
-	TranspileTS:      true,
-	TSArgs:           []string{},
-	IncludeTS:        false,
+	ExcludePaths:     []Regexp{},
+	PrebuildCmds:     [][]string{},
+	PostbuildCmds:    [][]string{},
 
 	NotFoundPath: "404",
 }

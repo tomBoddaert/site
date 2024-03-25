@@ -9,32 +9,32 @@ import (
 	"time"
 )
 
-const DefaultAddress = "localhost:8080"
+const defaultAddress = "localhost:8080"
 
-type Resolve struct {
+type resolution struct {
 	Resolved bool
 	Path     string
 	ModTime  time.Time
 }
 
-type Handler struct {
+type handler struct {
 	Config *Config
 }
 
 func getServeAddress() string {
 	address := os.Getenv("SITE_ADDRESS")
 	if address == "" {
-		address = DefaultAddress
+		address = defaultAddress
 	}
 
 	return address
 }
 
-func resolve(config *Config, urlPath string) Resolve {
+func resolve(config *Config, urlPath string) resolution {
 	base := path.Join(config.DstDir, urlPath)
 
 	if !strings.HasPrefix(base, config.DstDir) {
-		return Resolve{Resolved: false}
+		return resolution{Resolved: false}
 	}
 
 	entry, err := os.Stat(base)
@@ -44,7 +44,7 @@ func resolve(config *Config, urlPath string) Resolve {
 		}
 	} else {
 		if !entry.IsDir() {
-			return Resolve{
+			return resolution{
 				Resolved: true,
 				Path:     base,
 				ModTime:  entry.ModTime(),
@@ -66,10 +66,10 @@ func resolve(config *Config, urlPath string) Resolve {
 		}
 	}
 
-	return Resolve{Resolved: false}
+	return resolution{Resolved: false}
 }
 
-func (handler Handler) ServeHTTP(res http.ResponseWriter, req *http.Request) {
+func (handler handler) ServeHTTP(res http.ResponseWriter, req *http.Request) {
 	urlPath := req.URL.Path
 
 	logger.Debugf("Incoming request (%v)", urlPath)
@@ -94,16 +94,16 @@ func (handler Handler) ServeHTTP(res http.ResponseWriter, req *http.Request) {
 	}
 }
 
-func serve(config Config) {
+func Serve(config Config) {
 	logger.SetReportTimestamp(true)
 	logger.Info("Starting server...")
 	logger.SetReportTimestamp(false)
 
-	handler := Handler{Config: &config}
+	handler := handler{Config: &config}
 
 	address := getServeAddress()
 
-	logger.Infof("Hosting on 'http://%v/' (THIS SERVER IS FOR TESTING ONLY! DO NOT EXPOSE IT)", address)
+	logger.Infof("Hosting on 'http://%v/'\n  (THIS SERVER IS FOR TESTING ONLY! DO NOT EXPOSE IT)", address)
 	logger.Print("Press '[Ctrl] + C' to exit")
 
 	check(http.ListenAndServe(address, handler))

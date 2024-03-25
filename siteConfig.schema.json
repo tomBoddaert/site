@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "TemplateDir": {
+      "type": "string"
+    },
+    "TemplateRootFile": {
+      "type": "string"
+    },
+    "TemplatedSrcDir": {
+      "type": "string"
+    },
+    "RawSrcDir": {
+      "type": "string"
+    },
+    "DstDir": {
+      "type": "string"
+    },
+    "DstMode": {
+      "type": "string",
+      "pattern": "^03?[0-7]{0,10}$"
+    },
+    "DataFile": {
+      "type": "string"
+    },
+    "FmtTemplatedHtml": {
+      "type": "boolean"
+    },
+    "FmtRawHtml": {
+      "type": "boolean"
+    },
+    "ExcludePaths": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "format": "regex"
+      }
+    },
+    "PrebuildCmds": {
+      "type": "array",
+      "items": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "minItems": 1
+      }
+    },
+    "PostbuildCmds": {
+      "type": "array",
+      "items": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "minItems": 1
+      }
+    },
+    "NotFoundPath": {
+      "type": "string"
+    }
+  }
+}
